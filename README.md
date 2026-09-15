@@ -18,6 +18,7 @@ Official ox deploy example for a Ruby stack: a Sinatra 4 text API served by Puma
 - **Frontend bakes `GREETING_TAG` at build time.** `client/src/App.jsx` builds the string from one template literal, `` `frontend: hello world oxzoo-ruby-react_${import.meta.env.GREETING_TAG}` ``, and `vite.config.js` sets `envPrefix: ["GREETING_", "VITE_"]` so Vite inlines the variable when `npm run build` runs. Changing the tag re-bakes the frontend on the next deploy.
 - **Dependencies stay inside the repo.** Deploy hooks run as the unprivileged project user, so nothing is installed globally: `bundle config set --local path vendor/bundle` makes `bundle install` place gems in `vendor/bundle` inside the release, and `npm install` is local to the release too.
 - **No committed `Gemfile.lock`** (or `package-lock.json`): tooling differs between machines, so the server-side `bundle install` resolves from the manifest. Every direct gem and npm package is pinned to an exact version, which keeps installs deterministic.
+- **Host authorization.** Sinatra 4 enables `Rack::Protection::HostAuthorization` by default and only permits localhost Host headers, so `app.rb` explicitly authorizes the deploy domain (`set :host_authorization, ...`). Without it, every request nginx proxies with a real `Host` header gets a `403 attack prevented` response, while localhost probes (health checks) still pass.
 
 ## Deploy with ox
 
