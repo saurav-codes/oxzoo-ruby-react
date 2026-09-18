@@ -3,10 +3,8 @@
 name = "oxzoo-ruby-react"
 branch = "main"
 runtime = "executable"
-framework = "generic"
 package_manager = ""
 port = 9111
-environment_file = "/etc/ox/projects/oxzoo-ruby-react.env"
 required_packages = ["nodejs", "ruby-full", "bundler"]
 
 [[apt_sources]]
