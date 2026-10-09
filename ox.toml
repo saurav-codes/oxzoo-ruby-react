@@ -1,38 +1,17 @@
-# ox deploy manifest: Sinatra API + React SPA (https://github.com/saurav-codes/oxzoo-ruby-react)
+# Sinatra API on puma (bundler) + React SPA (npm) in one repo.
 
-name = "oxzoo-ruby-react"
-branch = "main"
-runtime = "executable"
-package_manager = ""
-port = 9111
-required_packages = ["nodejs", "ruby-full", "bundler"]
+[app]
+start  = "bundle exec puma -b tcp://127.0.0.1:$PORT config.ru"
+health = "/health"
 
-[[apt_sources]]
-name = "nodesource"
-url = "https://deb.nodesource.com/node_22.x"
-suite = "nodistro"
-components = ["main"]
-key_url = "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
-
-[[processes]]
-name = "web"
-command = "bundle exec puma -b tcp://127.0.0.1:{port} config.ru"
-readiness = "http://127.0.0.1:{port}/health"
-
-[frontend]
-dist = "dist"
-api_paths = ["/api", "/health"]
-
-[deploy]
-install = [
-  "bundle config set --local path vendor/bundle",
-  "bundle install",
-  "npm install",
-]
-build = ["npm", "run", "build"]
-health_url = "http://127.0.0.1:9111/health"
-
-[[domains]]
-name = "ruby-react.oxzoo.sorv.dev"
-tls = true
+[static]
+dir = "dist"
 spa = true
+api = ["/api", "/health"]
+
+[build]
+commands = ["bundle config set --local deployment true && bundle install", "npm run build"]
+
+[tools]
+ruby = "3.4.11"
+node = "24"

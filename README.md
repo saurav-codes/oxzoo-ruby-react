@@ -2,39 +2,93 @@
 
 Deployed with [ox](https://deploywithox.com): deploy a repo to your own server with one command, no Docker. [Docs](https://deploywithox.com/docs) · [Stack guides](https://deploywithox.com/docs/guides)
 
-Official ox deploy example for a Ruby stack: a Sinatra 4 text API served by Puma 6 plus a React 18 single-page app built with Vite 5, deployed from one `ox.toml` manifest onto a single Ubuntu VPS. nginx serves the built SPA from `dist/` and proxies the `/api` and `/health` prefixes to the Puma process on `127.0.0.1:9111`.
+An [ox](https://deploywithox.com) deploy example: a Sinatra 4 API on puma with a React 18 SPA built by Vite, deployed to your own Ubuntu server. ox installs Ruby and Node, runs `bundle install` into the release's own `vendor/bundle`, builds the SPA, and runs puma under systemd; Caddy serves the built SPA with an `index.html` fallback while sending only `/api` and `/health` to puma.
+
+For a full Rails app (Solid Queue, PostgreSQL), see [oxzoo-live-rails-queue](https://github.com/saurav-codes/oxzoo-live-rails-queue) and the [Rails guide](https://deploywithox.com/docs/guides/rails).
 
 ## Stack
 
-| Layer      | Tool                                    | Pinned version            |
-| ---------- | --------------------------------------- | ------------------------- |
-| Backend    | Ruby (apt `ruby-full`) + Sinatra        | sinatra 4.2.1             |
-| App server | Puma                                    | puma 6.6.1                |
-| Rack       | rack / rackup                           | rack 3.2.7, rackup 2.3.1  |
-| Frontend   | React + Vite (npm)                      | react 18.3.1, react-dom 18.3.1, vite 5.4.21, @vitejs/plugin-react 4.7.0 |
-| Runtime    | systemd + nginx via ox, port 9111       | NodeSource node_22.x      |
+| Layer | Tool | Role |
+|---|---|---|
+| Frontend | React 18 + Vite 5 | SPA built to `dist/` from `client/` |
+| API | Sinatra 4.2 on puma 6.6 | `GET /api/greeting` and `GET /health` |
+| Ruby | 3.4.11 | declared in `[tools]`; gems pinned in `Gemfile.lock` |
+| Node | 24 | `package-lock.json` is committed |
+
+## ox.toml
+
+```toml
+# Sinatra API on puma (bundler) + React SPA (npm) in one repo.
+
+[app]
+start  = "bundle exec puma -b tcp://127.0.0.1:$PORT config.ru"
+health = "/health"
+
+[static]
+dir = "dist"
+spa = true
+api = ["/api", "/health"]
+
+[build]
+commands = ["bundle config set --local deployment true && bundle install", "npm run build"]
+
+[tools]
+ruby = "3.4.11"
+node = "24"
+```
+
+The repo has two languages, so `[build] commands` names both: `npm ci` is detected from `package-lock.json` and runs first, then the gems and the SPA build.
 
 ## Environment flow
 
-- **Backend reads `GREETING_TAG` at runtime.** `app.rb` calls `ENV.fetch("GREETING_TAG")` on every request, so the value comes from the project's environment file (`/srv/ox/oxzoo-ruby-react/env`). A missing variable raises loudly instead of printing `hello world oxzoo-ruby-react_`.
-- **Frontend bakes `GREETING_TAG` at build time.** `client/src/App.jsx` builds the string from one template literal, `` `frontend: hello world oxzoo-ruby-react_${import.meta.env.GREETING_TAG}` ``, and `vite.config.js` sets `envPrefix: ["GREETING_", "VITE_"]` so Vite inlines the variable when `npm run build` runs. Changing the tag re-bakes the frontend on the next deploy.
-- **Dependencies stay inside the repo.** Deploy hooks run as the unprivileged project user, so nothing is installed globally: `bundle config set --local path vendor/bundle` makes `bundle install` place gems in `vendor/bundle` inside the release, and `npm install` is local to the release too.
-- **No committed `Gemfile.lock`** (or `package-lock.json`): tooling differs between machines, so the server-side `bundle install` resolves from the manifest. Every direct gem and npm package is pinned to an exact version, which keeps installs deterministic.
-- **Host authorization.** Sinatra 4 enables `Rack::Protection::HostAuthorization` by default and only permits localhost Host headers, so `app.rb` explicitly authorizes the deploy domain (`set :host_authorization, ...`). Without it, every request nginx proxies with a real `Host` header gets a `403 attack prevented` response, while localhost probes (health checks) still pass.
+- **Run time (API):** `app.rb` reads `GREETING_TAG` with `ENV.fetch` on every `GET /api/greeting`.
+- **Build time (SPA):** `vite.config.js` sets `envPrefix: ["GREETING_", "VITE_"]`, so `client/src/App.jsx` reads `import.meta.env.GREETING_TAG` and Vite bakes it into `dist/`. ox sets your variables before the build, and changing one with `ox vars set` redeploys, which rebuilds the SPA.
+- **Host check:** Sinatra 4 rejects unknown `Host` headers, so `app.rb` permits `PUBLIC_HOST`, which ox provides, plus `127.0.0.1` and `localhost`.
 
 ## Deploy with ox
 
-1. Create a project in the ox dashboard and paste the clone URL: `git@github.com:saurav-codes/oxzoo-ruby-react.git`.
-2. In the project's Environment editor, set `GREETING_TAG` (for example `w2-01`) **before the first deploy**. The backend reads it from the environment file at runtime, and the frontend build bakes it into the bundle.
-3. Press **Deploy**. ox installs `nodejs` (NodeSource), `ruby-full`, and `bundler`, runs the install hooks (`bundle config set --local path vendor/bundle`, `bundle install`, `npm install`), builds the SPA (`npm run build`), starts Puma on `127.0.0.1:9111`, and waits for `GET /health` to return `ok`.
+```sh
+curl -fsSL https://deploywithox.com/install.sh | sh
+ox login
+ox new https://github.com/saurav-codes/oxzoo-ruby-react
+printf 'GREETING_TAG=demo\n' | ox review oxzoo-ruby-react --from-file - --wait
+```
+
+The plan, offline:
+
+```console
+$ ox check .
+ox check . (manifest: ox.toml)
+
+  app.start                  bundle exec puma -b tcp://127.0.0.1:$PORT config.ru  declared
+  app.health                 /health                                              declared
+  static.dir                 dist                                                 declared
+  static.spa                 true                                                 declared
+  static.api                 /api, /health                                        declared
+  build.install              npm ci                                               detected:package-lock.json
+  build.commands[0]          bundle config set --local deployment true && bundle install declared
+  build.commands[1]          npm run build                                        declared
+  tools.node                 24                                                   declared
+  tools.ruby                 3.4.11                                               declared
+
+  Provided by ox: PORT, HOST, OX_ENV, OX_PROJECT, OX_RELEASE, OX_DATA_DIR, PUBLIC_URL, PUBLIC_HOST
+  Set on the dashboard before the first deploy: GREETING_TAG
+
+Ready to deploy.
+```
 
 ## Expected output
 
-With `GREETING_TAG=<your-tag>` set in the Environment editor, the page shows two labeled lines:
-
 ```
-frontend: hello world oxzoo-ruby-react_<your-tag>
-backend: hello world oxzoo-ruby-react_<your-tag>
+oxzoo-ruby-react
+frontend: hello world oxzoo-ruby-react_<GREETING_TAG>
+backend: hello world oxzoo-ruby-react_<GREETING_TAG>
 ```
 
-The frontend line is baked into the bundle at build time; the backend line comes from `GET /api/greeting`, which returns `hello world oxzoo-ruby-react_<your-tag>` as `text/plain` and is re-read from the environment on every request.
+## Local development
+
+```sh
+npm ci && GREETING_TAG=dev npm run build
+bundle install
+GREETING_TAG=dev bundle exec puma -b tcp://127.0.0.1:9111 config.ru
+```
