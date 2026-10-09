@@ -1,5 +1,7 @@
 # oxzoo-ruby-react
 
+Deployed with [ox](https://deploywithox.com): deploy a repo to your own server with one command, no Docker. [Docs](https://deploywithox.com/docs) · [Stack guides](https://deploywithox.com/docs/guides)
+
 Official ox deploy example for a Ruby stack: a Sinatra 4 text API served by Puma 6 plus a React 18 single-page app built with Vite 5, deployed from one `ox.toml` manifest onto a single Ubuntu VPS. nginx serves the built SPA from `dist/` and proxies the `/api` and `/health` prefixes to the Puma process on `127.0.0.1:9111`.
 
 ## Stack
